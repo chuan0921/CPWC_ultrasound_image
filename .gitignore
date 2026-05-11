@@ -1,0 +1,11 @@
+output/
+output_fieldii_parallel/
+ref/
+
+*.asv
+*.fig
+*.log
+*.tmp
+
+.DS_Store
+.vscode/
