@@ -5,7 +5,7 @@
 clearvars -except probe_name; close all; clc;
 
 if ~exist('probe_name', 'var')
-    probe_name = 'literature_l12_3v';
+    probe_name = 'zipper_array';
 end
 
 params = setup_parameters(probe_name);
@@ -81,16 +81,15 @@ fprintf('=== Done ===\n');
 function [lri_env_frames, lri_bmode_frames, lri_env_rows, lri_bmode_rows] = ...
         simulate_ceus_images(params)
     [X, Z] = meshgrid(params.x_grid, params.z_grid);
-    [Z3, ~, Y3] = ndgrid(params.z_grid, params.x_grid, params.y_grid);
 
+    x0 = params.vessel_center_x;
     z0 = params.vessel_center_z;
-    r3 = sqrt(Y3.^2 + (Z3 - z0).^2);
-    lumen3 = r3 <= params.R;
-    wall3 = r3 > params.R & r3 <= params.R + params.wall_thickness;
+    r_xz = sqrt((X - x0).^2 + (Z - z0).^2);
+    lumen_xz = r_xz <= params.R;
+    wall_xz = r_xz > params.R & r_xz <= params.R + params.wall_thickness;
+    lumen3 = repmat(lumen_xz, 1, 1, params.Ny);
+    wall3 = repmat(wall_xz, 1, 1, params.Ny);
     tissue3 = ~lumen3 & ~wall3;
-
-    central_y_idx = nearest_index(params.y_grid, 0);
-    lumen = lumen3(:,:,central_y_idx);
 
     % Image-domain point spread function. This approximates compounded plane
     % wave resolution without simulating channel RF.
@@ -117,8 +116,8 @@ function [lri_env_frames, lri_bmode_frames, lri_env_rows, lri_bmode_rows] = ...
     flow_iq0 = 1.25 * flow_iq0 .* lumen3;
     wall_iq = 2.6 * wall_iq .* wall3;
 
-    vx_map3 = zeros(params.Nz, params.Nx, params.Ny);
-    vx_map3(lumen3) = params.v0 * (1 - (r3(lumen3) / params.R).^2);
+    vy_map_xz = zeros(params.Nz, params.Nx);
+    vy_map_xz(lumen_xz) = params.v0 * (1 - (r_xz(lumen_xz) / params.R).^2);
 
     lri_env_frames = zeros(params.Nz, params.Nx, params.n_angles, params.n_frames);
     lri_bmode_frames = zeros(params.Nz, params.Nx, params.n_angles, params.n_frames);
@@ -133,8 +132,8 @@ function [lri_env_frames, lri_bmode_frames, lri_env_rows, lri_bmode_rows] = ...
     for frame = 1:params.n_frames
         for angle_idx = 1:params.n_angles
             pulse_idx = (frame - 1) * params.n_angles + (angle_idx - 1);
-            displacement3 = vx_map3 * pulse_idx / params.PRF;
-            flow_iq = shift_flow_volume_x(flow_iq0, displacement3, X, Z);
+            displacement_y = vy_map_xz * pulse_idx / params.PRF;
+            flow_iq = shift_flow_volume_y(flow_iq0, displacement_y, params.dy);
 
             angle = params.angles(angle_idx);
             max_angle = max(abs(params.angles));
@@ -145,7 +144,7 @@ function [lri_env_frames, lri_bmode_frames, lri_env_rows, lri_bmode_rows] = ...
             end
             angle_noise = params.image_noise_floor * complex(randn(size(X)), randn(size(X)));
 
-            shadow = 1 - 0.18 * lumen;
+            shadow = 1 - 0.18 * lumen_xz;
             iq_volume = tissue_iq + flow_iq + wall_iq;
 
             if has_rows
@@ -192,10 +191,6 @@ function [lri_env_frames, lri_bmode_frames, lri_env_rows, lri_bmode_rows] = ...
     end
 end
 
-function idx = nearest_index(grid, value)
-    [~, idx] = min(abs(grid - value));
-end
-
 function iq = filtered_speckle_3d(params, axial_psf, lateral_psf, elevation_psf)
     iq = complex(randn(params.Nz, params.Nx, params.Ny), ...
         randn(params.Nz, params.Nx, params.Ny));
@@ -204,12 +199,23 @@ function iq = filtered_speckle_3d(params, axial_psf, lateral_psf, elevation_psf)
     iq = convn(iq, reshape(elevation_psf, 1, 1, []), 'same');
 end
 
-function flow_iq = shift_flow_volume_x(flow_iq0, displacement3, X, Z)
-    flow_iq = complex(zeros(size(flow_iq0)));
-    for y_idx = 1:size(flow_iq0, 3)
-        flow_iq(:,:,y_idx) = interp2(X, Z, flow_iq0(:,:,y_idx), ...
-            X - displacement3(:,:,y_idx), Z, 'linear', 0);
-    end
+function flow_iq = shift_flow_volume_y(flow_iq0, displacement_y, dy)
+    [nz, nx, ny] = size(flow_iq0);
+    n_lines = nz * nx;
+    flow_lines = reshape(flow_iq0, n_lines, ny);
+
+    shift_samples = displacement_y(:) / dy;
+    query = mod((0:ny-1) - shift_samples, ny);
+    idx0 = floor(query) + 1;
+    frac = query - floor(query);
+    idx1 = mod(idx0, ny) + 1;
+
+    line_idx = repmat((1:n_lines)', 1, ny);
+    val0 = flow_lines(sub2ind([n_lines, ny], line_idx, idx0));
+    val1 = flow_lines(sub2ind([n_lines, ny], line_idx, idx1));
+    shifted_lines = (1 - frac) .* val0 + frac .* val1;
+
+    flow_iq = reshape(shifted_lines, nz, nx, ny);
 end
 
 function img = project_elevation(iq_volume, weights)
@@ -321,12 +327,15 @@ function metadata = build_tracking_metadata(params, source)
     metadata.size_lri_env_frames = [params.Nz, params.Nx, params.n_angles, params.n_frames];
     metadata.is_compounded = false;
     metadata.source = source;
+    metadata.flow_axis = params.flow_axis;
+    metadata.image_plane = 'x-z';
+    metadata.primary_velocity = 'vy';
     metadata.run_id = get_optional_param(params, 'run_id', '');
     metadata.run_timestamp = get_optional_param(params, 'run_timestamp', '');
     metadata.output_root = get_optional_param(params, 'output_root', '');
     if has_rows
         metadata.description = ...
-            'Use lri_env_rows(:,:,row_idx,angle_idx,frame_idx) for zipper row-specific LRI tracking.';
+            'Use lri_env_rows(:,:,row_idx,angle_idx,frame_idx) for y-direction two-plane transit tracking.';
     else
         metadata.description = ...
             'Use lri_env_frames(:,:,angle_idx,frame_idx) for per-angle LRI speckle tracking.';
@@ -343,13 +352,22 @@ function metadata = build_tracking_metadata(params, source)
     metadata.PRF_Hz = params.PRF;
     metadata.dt_pulse_s = 1 / params.PRF;
     metadata.dt_frame_s = params.n_angles / params.PRF;
+    metadata.vessel_center_x_m = params.vessel_center_x;
+    metadata.vessel_center_z_m = params.vessel_center_z;
+    metadata.vessel_radius_m = params.R;
     metadata.array_order = 'row=z/depth, col=x/lateral';
     if has_rows
         metadata.matlab_indexing = ...
             'img = lri_env_rows(:,:,row_idx,angle_idx,frame_idx)';
         metadata.row_y_centers_m = row_y_centers(params);
+        metadata.row_separation_m = abs(diff(metadata.row_y_centers_m(1:2)));
+        metadata.expected_center_lag_s = metadata.row_separation_m / params.v0;
+        metadata.expected_center_lag_frames = ...
+            metadata.expected_center_lag_s / metadata.dt_frame_s;
+        metadata.expected_center_lag_pulses = ...
+            metadata.expected_center_lag_s * params.PRF;
         metadata.row_projection = ...
-            'Each row image is an elevation-weighted x-z projection from the same 3D y-z vessel phantom.';
+            'Each row image is an elevation-weighted x-z observation plane from the same y-moving 3D speckle volume.';
     else
         metadata.matlab_indexing = 'img = lri_env_frames(:,:,angle_idx,frame_idx)';
     end

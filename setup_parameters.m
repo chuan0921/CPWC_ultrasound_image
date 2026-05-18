@@ -3,7 +3,7 @@ function params = setup_parameters(probe_name)
 % 參考: Leow & Tang, UMB 2018, Table 2
 
     if nargin < 1
-        probe_name = 'literature_l12_3v';
+        probe_name = 'zipper_array';
     end
 
     %% 物理常數
@@ -22,9 +22,11 @@ function params = setup_parameters(probe_name)
     params.angles = deg2rad([-10 -5 0 5 10]); % 平面波角度 [rad]
 
     %% 流場參數 (Poiseuille steady flow)
-    params.phantom_name = 'literature_steady_poiseuille';
+    params.phantom_name = 'zipper_y_direction_volume_flow';
+    params.flow_axis = 'y';                 % y = elevation
     params.v0 = 0.50;                       % 中心線速度 [m/s] (50 cm/s)
     params.R = 3e-3;                        % 管半徑 [m] (6mm 直徑)
+    params.vessel_center_x = 0;             % 管中心 lateral 位置 [m]
     params.vessel_center_z = 20e-3;         % 管中心深度 [m]
     params.beam_to_flow_angle = pi/2;       % 超音波束與流向夾角 [rad]
 
@@ -56,7 +58,7 @@ function params = setup_parameters(probe_name)
 
     %% 散射子參數
     % 管長度延伸到 FOV 外避免邊界效應
-    params.vessel_length = 12e-3;           % 管長 [m] (wrap-around 安全下限: v0*T_total = 5 mm)
+    params.vessel_length = 12e-3;           % Legacy scatterer path length [m]
     params.scatter_density = 10;            % 每個解析度單元的散射子數
     params.wall_thickness = 0.2e-3;         % 管壁厚度 [m]
     params.wall_amp_factor = 10;            % 管壁相對振幅倍數
@@ -68,7 +70,7 @@ function params = setup_parameters(probe_name)
     params.random_seeds = 1:5;              % 批次產生不同 speckle seed
     params.random_seed = params.random_seeds(1);  % 單次模擬預設 seed
     params.image_noise_floor = 0.01;        % 影像域複數雜訊
-    params.n_frames = 20;                   % 每個 seed 的模擬幀數
+    params.n_frames = 120;                  % 每個 seed 的模擬幀數
     params.video_fps = 20;                  % 輸出影片幀率 [frames/s]
     params.dynamic_range = 50;              % B-mode 動態範圍 [dB]
 

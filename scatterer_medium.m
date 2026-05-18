@@ -125,6 +125,14 @@ function flow_pos = update_flow_positions(flow_pos, params, dt)
 end
 
 function gt = generate_ground_truth(params)
+    row_centers = row_y_centers(params);
+    if numel(row_centers) >= 2
+        row_separation = abs(row_centers(2) - row_centers(1));
+    else
+        row_separation = NaN;
+    end
+
+    gt.vessel.center_x = params.vessel_center_x;
     gt.vessel.center_z = params.vessel_center_z;
     gt.vessel.radius = params.R;
     gt.vessel.diameter = params.R * 2;
@@ -133,39 +141,38 @@ function gt = generate_ground_truth(params)
     gt.vessel.wall_thickness = params.wall_thickness;
 
     gt.flow.v0 = params.v0;
+    gt.flow.axis = params.flow_axis;
     gt.flow.beam_to_flow_angle = params.beam_to_flow_angle;
     gt.flow.viscosity = 0.004;
     gt.flow.WSR_analytical = 2 * params.v0 / params.R;
     gt.flow.Re = params.v0 * params.R * 2 * 1060 / gt.flow.viscosity;
+    gt.flow.Q_truth = pi * params.R^2 * params.v0 / 2;
+    gt.flow.row_y_centers = row_centers;
+    gt.flow.row_separation = row_separation;
 
     [X, Z] = meshgrid(params.x_grid, params.z_grid);
-    [Z3, X3, Y3] = ndgrid(params.z_grid, params.x_grid, params.y_grid);
-    r = abs(Z - params.vessel_center_z);
-    r3 = sqrt(Y3.^2 + (Z3 - params.vessel_center_z).^2);
-    inside = r <= params.R;
-    inside3 = r3 <= params.R;
+    r_xz = sqrt((X - params.vessel_center_x).^2 + ...
+        (Z - params.vessel_center_z).^2);
+    inside_xz = r_xz <= params.R;
 
-    vx_map = zeros(size(X));
-    vx_map(inside) = params.v0 * (1 - (r(inside) / params.R).^2);
-    vx_map3 = zeros(size(X3));
-    vx_map3(inside3) = params.v0 * (1 - (r3(inside3) / params.R).^2);
+    vy_map_xz = zeros(size(X));
+    vy_map_xz(inside_xz) = params.v0 * ...
+        (1 - (r_xz(inside_xz) / params.R).^2);
 
-    gt.flow.vx_map = vx_map;
-    gt.flow.vessel_mask = inside;
-    gt.flow.vx_map_3d = vx_map3;
-    gt.flow.vessel_mask_3d = inside3;
+    gt.flow.vy_map_xz = vy_map_xz;
+    gt.flow.vessel_mask_xz = inside_xz;
 
     [~, ix_center] = min(abs(params.x_grid));
-    [~, iy_center] = min(abs(params.y_grid));
     gt.flow.radial_profile_z = params.z_grid';
-    gt.flow.radial_profile_v = vx_map(:, ix_center);
-    gt.flow.center_y_index = iy_center;
+    gt.flow.radial_profile_v = vy_map_xz(:, ix_center);
 
     dt_frame = params.n_angles / params.PRF;
     gt.flow.dt_frame = dt_frame;
-    gt.flow.dx_map = vx_map * dt_frame;
-    gt.flow.dx_map_3d = vx_map3 * dt_frame;
-    gt.flow.dx_max = params.v0 * dt_frame;
+    gt.flow.dy_map_xz = vy_map_xz * dt_frame;
+    gt.flow.dy_max = params.v0 * dt_frame;
+    gt.flow.expected_lag_s = row_separation / params.v0;
+    gt.flow.expected_lag_frames = gt.flow.expected_lag_s / dt_frame;
+    gt.flow.expected_lag_pulses = gt.flow.expected_lag_s * params.PRF;
 
     gt.grid.x = params.x_grid;
     gt.grid.y = params.y_grid;
@@ -177,8 +184,23 @@ function gt = generate_ground_truth(params)
     gt.grid.Ny = params.Ny;
     gt.grid.Nz = params.Nz;
 
-    fprintf(['Ground truth: v0=%.2f m/s, R=%.1f mm, WSR=%.0f 1/s, ', ...
-        'dx_max=%.3f mm/frame, 3D grid=%dx%dx%d\n'], ...
-        params.v0, params.R*1e3, gt.flow.WSR_analytical, ...
-        gt.flow.dx_max*1e3, params.Nz, params.Nx, params.Ny);
+    fprintf(['Ground truth: vy0=%.2f m/s, R=%.1f mm, Q=%.3f mL/s, ', ...
+        'row_sep=%.2f mm, lag=%.1f frames\n'], ...
+        params.v0, params.R*1e3, gt.flow.Q_truth*1e6, ...
+        row_separation*1e3, gt.flow.expected_lag_frames);
+end
+
+function centers = row_y_centers(params)
+    if ~isfield(params.probe, 'n_y') || params.probe.n_y < 1 || ...
+            ~isfield(params.probe, 'element_data')
+        centers = NaN;
+        return;
+    end
+
+    centers = zeros(1, params.probe.n_y);
+    for row = 1:params.probe.n_y
+        element_rows = row:params.probe.n_y:params.probe.n_elements;
+        y_vertices = params.probe.element_data(element_rows, [3 6 9 12]);
+        centers(row) = mean([min(y_vertices(:)), max(y_vertices(:))]);
+    end
 end

@@ -1,7 +1,7 @@
 # CPWC Ultrasound Image Simulation
 
-This project generates synthetic CPWC-style ultrasound image sequences for
-speckle tracking and WSS/WSR algorithm testing.
+This branch generates synthetic CPWC-style ultrasound image sequences for
+zipper-array two-plane transit tracking and volume-flow estimation.
 
 The current primary workflow is the fast image-domain simulator in
 `main_flow_simulation.m`. It does not run Field II. Field II code is kept only
@@ -15,7 +15,7 @@ Run the fast simulator from MATLAB:
 main_flow_simulation
 ```
 
-The default probe profile is `literature_l12_3v`. To run another probe profile,
+The default probe profile is `zipper_array`. To run another probe profile,
 set `probe_name` before calling the simulator:
 
 ```matlab
@@ -38,7 +38,7 @@ output/<probe_name>/run_yyyymmdd_HHMMSS_mmm/
 For the default settings this is:
 
 ```text
-output/literature_l12_3v/run_.../
+output/zipper_array/run_.../
 ```
 
 Each seed is saved separately:
@@ -64,21 +64,22 @@ The data layout is fixed as:
 [z, x, angle, frame]
 ```
 
-For the default literature probe settings:
+For the default zipper-array settings:
 
 ```matlab
-size(lri_env_frames)
-% [167 104 5 20]
+size(lri_env_rows)
+% [104 65 2 5 120]
 ```
 
-Use the same angle across consecutive frames for frame-to-frame tracking:
+Use the same row and angle across frames for temporal tracking, or compare
+row 1 and row 2 with a time lag for y-direction transit tracking:
 
 ```matlab
-load('image_data.mat', 'lri_env_frames', 'params')
+load('image_data.mat', 'lri_env_rows', 'params')
 
 angle_idx = 3;  % 0 deg
-img1 = lri_env_frames(:,:,angle_idx,1);
-img2 = lri_env_frames(:,:,angle_idx,2);
+row1_t1 = lri_env_rows(:,:,1,angle_idx,1);
+row2_tlag = lri_env_rows(:,:,2,angle_idx,81);
 ```
 
 Timing and pixel size:
@@ -141,13 +142,13 @@ lri_bmode_rows
 files store one LRI envelope image and its B-mode visualization:
 
 ```text
-frame_001_angle_+00deg.mat
-frame_001_angle_+00deg.png
+lri_frames/row_01/frame_001_row_01_angle_+00deg.mat
+lri_frames/row_01/frame_001_row_01_angle_+00deg.png
 ...
 ```
 
-The `.png` files are for visual inspection only. Quantitative tracking should
-use `lri_env_frames` from `image_data.mat`.
+The `.png` files are for visual inspection only. Quantitative zipper tracking
+should use `lri_env_rows` from `image_data.mat`.
 
 ## Default Simulation Settings
 
@@ -156,20 +157,31 @@ The default settings are defined in `setup_parameters.m`.
 Key defaults:
 
 ```text
-Probe: literature_l12_3v
-Center frequency: 8 MHz
+Probe: zipper_array
+Center frequency: 5 MHz
 Angles: [-10 -5 0 5 10] deg
 PRF: 10 kHz
 Seeds: 1:5
-Frames per seed: 20
-Velocity profile: steady Poiseuille flow
+Frames per seed: 120
+Velocity profile: steady Poiseuille flow along y/elevation
 Center velocity: 0.50 m/s
 Vessel radius: 3 mm
+Vessel center lateral position: 0 mm
 Vessel center depth: 20 mm
 Wall thickness: 0.2 mm
 ```
 
-The vessel radius defines the lumen. The wall is added outside the lumen.
+Coordinates follow the ultrasound convention used in `AGENT.md`:
+
+```text
+x: lateral
+y: elevation
+z: axial/depth
+```
+
+The vessel axis and flow direction are along `y`. Each image is an `x-z`
+observation plane. The vessel radius defines the circular lumen in the `x-z`
+plane, and the wall is added outside the lumen.
 
 ## Ground Truth
 
@@ -178,10 +190,14 @@ Ground truth is saved in `ground_truth.mat`.
 Important fields:
 
 ```matlab
-ground_truth.flow.vx_map
-ground_truth.flow.vessel_mask
-ground_truth.flow.dx_map
-ground_truth.flow.dx_max
+ground_truth.flow.vy_map_xz
+ground_truth.flow.vessel_mask_xz
+ground_truth.flow.dy_map_xz
+ground_truth.flow.dy_max
+ground_truth.flow.Q_truth
+ground_truth.flow.row_separation
+ground_truth.flow.expected_lag_frames
+ground_truth.vessel.center_x
 ground_truth.vessel.center_z
 ground_truth.vessel.radius
 ground_truth.vessel.wall_upper
@@ -191,10 +207,13 @@ ground_truth.vessel.wall_lower
 For the default setup:
 
 ```text
-vessel center = 20 mm
+vessel center x = 0 mm
+vessel center z = 20 mm
 upper lumen boundary = 17 mm
 lower lumen boundary = 23 mm
-maximum frame displacement = 0.25 mm/frame
+maximum y displacement = 0.25 mm/frame
+row center separation = about 20.01 mm
+expected center transit lag = about 80 frames
 ```
 
 ## Simulation Model
@@ -202,17 +221,18 @@ maximum frame displacement = 0.25 mm/frame
 The current fast simulator is image-domain based:
 
 1. Generate filtered complex speckle fields for tissue, flow, and wall.
-2. Apply the analytical Poiseuille displacement field to the flow speckle.
+2. Apply the analytical Poiseuille y-displacement field to the flow speckle.
 3. Generate one uncompounded LRI envelope image per angle and frame.
-4. Save only per-angle LRI envelope data for tracking.
+4. Save row-specific per-angle LRI envelope data for zipper tracking.
 
 This is not a full Field II RF/channel simulation. It is intended for fast
-algorithm development and controlled WSS/WSR testing.
+algorithm development and controlled volume-flow testing.
 
 ## Field II Sanity Check
 
 `main_fieldii_parallel_simulation.m` and `simulate_fieldii_seed.m` are retained
-for small Field II sanity checks with the literature linear array.
+for small Field II sanity checks with the literature linear array. They are not
+the primary y-direction volume-flow workflow in this branch.
 
 The Field II sanity-check script reads the local Field II MATLAB folder from
 the `FIELDII_DIR` environment variable. Do not commit local absolute paths.
