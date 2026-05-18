@@ -214,10 +214,13 @@ algorithm development and controlled WSS/WSR testing.
 `main_fieldii_parallel_simulation.m` and `simulate_fieldii_seed.m` are retained
 for small Field II sanity checks with the literature linear array.
 
-The Field II path is currently set in `main_fieldii_parallel_simulation.m`:
+The Field II sanity-check script reads the local Field II MATLAB folder from
+the `FIELDII_DIR` environment variable. Do not commit local absolute paths.
 
-```matlab
-fieldii_dir = '/Users/dorishsu/MBP16/NTU/PCLAB/Project/m_files';
+Example:
+
+```bash
+export FIELDII_DIR=/path/to/fieldii/m_files
 ```
 
 The Field II output uses the same tracking interface:

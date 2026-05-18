@@ -5,7 +5,11 @@
 clear; close all; clc;
 
 proj_dir = fileparts(mfilename('fullpath'));
-fieldii_dir = '/Users/dorishsu/MBP16/NTU/PCLAB/Project/m_files';
+fieldii_dir = getenv('FIELDII_DIR');
+if isempty(fieldii_dir)
+    error(['Set the FIELDII_DIR environment variable to your local Field II ', ...
+        'MATLAB folder before running this script.']);
+end
 addpath(fieldii_dir);
 
 params = setup_parameters('literature_l12_3v');
