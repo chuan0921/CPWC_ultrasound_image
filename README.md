@@ -15,6 +15,20 @@ Run the fast simulator from MATLAB:
 main_flow_simulation
 ```
 
+The default probe profile is `literature_l12_3v`. To run another probe profile,
+set `probe_name` before calling the simulator:
+
+```matlab
+probe_name = 'literature_l12_3v';
+main_flow_simulation
+
+probe_name = 'linear_l12_5mhz';
+main_flow_simulation
+
+probe_name = 'zipper_array';
+main_flow_simulation
+```
+
 Each run creates a timestamped output folder:
 
 ```text
@@ -38,7 +52,7 @@ seed_0005/
 
 ## Tracking Input
 
-The official tracking input is:
+For linear-array profiles, the official tracking input is:
 
 ```matlab
 lri_env_frames(:,:,angle_idx,frame_idx)
@@ -78,6 +92,22 @@ dz = params.dz;
 Do not use compounded images for tracking. This project intentionally saves
 uncompounded per-angle LRI envelope images.
 
+For the zipper-array profile, the official row-specific tracking input is:
+
+```matlab
+lri_env_rows(:,:,row_idx,angle_idx,frame_idx)
+```
+
+The zipper data layout is:
+
+```text
+[z, x, row, angle, frame]
+```
+
+Use `row_idx = 1` and `row_idx = 2` to access the two elevation rows. The
+combined `lri_env_frames` output is kept only for preview/backward-compatible
+inspection and should not be used for zipper row-to-row tracking.
+
 ## Seed Folder Contents
 
 Each `seed_XXXX` folder contains only tracking-related files:
@@ -98,6 +128,13 @@ lri_bmode_frames
 params
 timing
 tracking_metadata
+```
+
+For zipper-array runs, `image_data.mat` also contains:
+
+```text
+lri_env_rows
+lri_bmode_rows
 ```
 
 `lri_frames/` contains per-frame/per-angle `.mat` and `.png` files. The `.mat`
@@ -195,13 +232,54 @@ Probe settings are centralized in `setup_parameters.m`.
 
 Available profiles:
 
-```matlab
-setup_parameters('literature_l12_3v')
-setup_parameters('zipper_array')
+```text
+literature_l12_3v   Literature L12-3v, 8 MHz, 128-element linear array
+linear_l12_5mhz     L12 geometry, 5 MHz, 128-element linear array
+zipper_array        5 MHz zipper array, 128 x 2 = 256 elements
 ```
+
+To select a profile, set `probe_name` before running `main_flow_simulation.m`.
+The simulator passes that name to `setup_parameters(probe_name)`.
 
 The fast simulator can use these settings for image-domain simulation. The
 Field II sanity check currently supports only the linear array profile.
+
+### Adding a New Array
+
+Add new probe profiles in `setup_parameters.m`, inside the `probe_profile(name)`
+function. Each profile should define a new `case` with the required probe fields:
+
+```matlab
+probe.name
+probe.label
+probe.geometry
+probe.f0
+probe.n_elements
+probe.pitch
+probe.kerf
+probe.element_width
+probe.element_height
+probe.elev_focus
+probe.n_sub_x
+probe.n_sub_y
+probe.fs
+```
+
+For a standard linear array, these scalar geometry fields are enough. For a
+non-standard geometry such as the zipper array, also define:
+
+```matlab
+probe.element_data
+probe.element_centers
+```
+
+`element_data` uses the Field-II-style element polygon format already used by
+the zipper-array profile. After adding the profile, run it by setting:
+
+```matlab
+probe_name = '<new_profile_name>';
+main_flow_simulation
+```
 
 ## Version Control
 

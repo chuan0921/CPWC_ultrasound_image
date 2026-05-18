@@ -10,7 +10,7 @@ function params = setup_parameters(probe_name)
     params.c = 1540;                        % 聲速 [m/s]
 
     %% 探頭參數
-    % 可選: 'literature_l12_3v' 或 'zipper_array'
+    % 可選: 'literature_l12_3v', 'linear_l12_5mhz' 或 'zipper_array'
     params.probe_name = probe_name;
     params = apply_probe_profile(params);
 
@@ -29,8 +29,6 @@ function params = setup_parameters(probe_name)
     params.beam_to_flow_angle = pi/2;       % 超音波束與流向夾角 [rad]
 
     %% 影像網格 (窄 FOV，只供 speckle tracking + 看血管壁)
-    literature_aperture_width = (128 - 1) * 0.2e-3;
-    aperture_width = literature_aperture_width;
     params.x_min = -5e-3;                   % FOV 寬 10 mm
     params.x_max =  5e-3;
     params.z_min = 16e-3;                   % 含血管壁 z=17, 23 mm 各留 1 mm margin
@@ -42,6 +40,19 @@ function params = setup_parameters(probe_name)
     params.z_grid = params.z_min : params.dz : params.z_max;
     params.Nx = length(params.x_grid);
     params.Nz = length(params.z_grid);
+
+    %% 3D phantom elevation grid
+    params.dy = params.lambda / 2;          % Elevation voxel spacing [m]
+    if isfield(params.probe, 'element_data')
+        y_vertices = params.probe.element_data(:, [3 6 9 12]);
+        params.y_min = min(y_vertices(:));
+        params.y_max = max(y_vertices(:));
+    else
+        params.y_min = -(params.R + params.wall_thickness + 1e-3);
+        params.y_max =  (params.R + params.wall_thickness + 1e-3);
+    end
+    params.y_grid = params.y_min : params.dy : params.y_max;
+    params.Ny = length(params.y_grid);
 
     %% 散射子參數
     % 管長度延伸到 FOV 外避免邊界效應
@@ -105,28 +116,40 @@ function probe = probe_profile(name)
             probe.n_sub_y = 1;
             probe.fs = 100e6;
 
+        case {'linear_l12_5mhz', 'linear_5mhz', 'l12_5mhz'}
+            probe.name = 'linear_l12_5mhz';
+            probe.label = 'Linear L12 geometry, 5 MHz';
+            probe.geometry = 'linear_array';
+            probe.f0 = 5e6;
+            probe.n_elements = 128;
+            probe.pitch = 0.2e-3;
+            probe.kerf = 0.02e-3;
+            probe.element_height = 5e-3;
+            probe.elev_focus = 20e-3;
+            probe.n_sub_x = 1;
+            probe.n_sub_y = 1;
+            probe.fs = 100e6;
+
         case {'zipper_array', 'zipper'}
             probe.name = 'zipper_array';
             probe.label = 'Zipper array';
             probe.geometry = 'zipper_array';
             probe.f0 = 5e6;
             probe.gap = 0.01e-3;
-            probe.n_elements = 4;
+            probe.n_x = 128;
+            probe.n_y = 2;
+            probe.n_elements = probe.n_x * probe.n_y;
             probe.pitch = 0.31e-3;
             probe.kerf = probe.gap;
             probe.element_width = 0.3e-3;
-            probe.element_height = 60e-3 + probe.gap;
+            probe.element_height = 20e-3;
+            probe.row_pitch = 20e-3 + probe.gap;
             probe.elev_focus = NaN;
             probe.n_sub_x = 1;
             probe.n_sub_y = 1;
             probe.fs = 100e6;
 
-            gap = probe.gap;
-            probe.element_data = [...
-                1, -0.3e-3 - gap/2, (60e-3+gap)/2 - (20e-3) - gap, 0, -0.3e-3 - gap/2, (-60e-3-gap)/2, 0, -gap/2, (-60e-3-gap)/2, 0, -gap/2, (-60e-3-gap)/2 + (20e-3), 0, 1, 0.3e-3, 60e-3+gap, 0, 0, 0;...
-                2, -0.3e-3 - gap/2, (60e-3+gap)/2, 0, -gap/2, (60e-3+gap)/2, 0, -gap/2, (-60e-3-gap)/2 + 20e-3 + gap, 0, -0.3e-3 - gap/2, (60e-3+gap)/2 - (20e-3), 0, 1, 0.3e-3, 60e-3+gap, 0, 0, 0;...
-                3, gap/2, (60e-3+gap)/2 - (20e-3), 0, gap/2, (-60e-3-gap)/2, 0, gap/2 + 0.3e-3, (-60e-3-gap)/2, 0, 0.3e-3 + gap/2, (-60e-3-gap)/2 + (20e-3), 0, 1, 0.3e-3, 60e-3+gap, 0, 0, 0;...
-                4, gap/2, (60e-3+gap)/2, 0, gap/2, (60e-3+gap)/2 - (20e-3), 0, 0.3e-3 + gap/2, (-60e-3-gap)/2 + (20e-3), 0, gap/2 + 0.3e-3, (60e-3+gap)/2, 0, 1, 0.3e-3, 60e-3+gap, 0, 0, 0];
+            probe.element_data = zipper_element_data(probe);
             probe.element_centers = element_centers_from_data(probe.element_data);
 
         otherwise
@@ -135,6 +158,35 @@ function probe = probe_profile(name)
 
     if ~isfield(probe, 'element_width')
         probe.element_width = probe.pitch - probe.kerf;
+    end
+end
+
+function data = zipper_element_data(probe)
+    n = probe.n_elements;
+    data = zeros(n, 19);
+
+    aperture_width = (probe.n_x - 1) * probe.pitch + probe.element_width;
+    x0 = -aperture_width / 2;
+    y_centers = [-0.5, 0.5] * probe.row_pitch;
+
+    idx = 0;
+    for ix = 1:probe.n_x
+        x_left = x0 + (ix - 1) * probe.pitch;
+        x_right = x_left + probe.element_width;
+
+        for iy = 1:probe.n_y
+            idx = idx + 1;
+            y_center = y_centers(iy);
+            y_bottom = y_center - probe.element_height / 2;
+            y_top = y_center + probe.element_height / 2;
+
+            data(idx,:) = [idx, ...
+                x_left,  y_top,    0, ...
+                x_left,  y_bottom, 0, ...
+                x_right, y_bottom, 0, ...
+                x_right, y_top,    0, ...
+                1, probe.element_width, probe.element_height, 0, 0, 0];
+        end
     end
 end
 

@@ -139,31 +139,46 @@ function gt = generate_ground_truth(params)
     gt.flow.Re = params.v0 * params.R * 2 * 1060 / gt.flow.viscosity;
 
     [X, Z] = meshgrid(params.x_grid, params.z_grid);
+    [Z3, X3, Y3] = ndgrid(params.z_grid, params.x_grid, params.y_grid);
     r = abs(Z - params.vessel_center_z);
+    r3 = sqrt(Y3.^2 + (Z3 - params.vessel_center_z).^2);
     inside = r <= params.R;
+    inside3 = r3 <= params.R;
 
     vx_map = zeros(size(X));
     vx_map(inside) = params.v0 * (1 - (r(inside) / params.R).^2);
+    vx_map3 = zeros(size(X3));
+    vx_map3(inside3) = params.v0 * (1 - (r3(inside3) / params.R).^2);
 
     gt.flow.vx_map = vx_map;
     gt.flow.vessel_mask = inside;
+    gt.flow.vx_map_3d = vx_map3;
+    gt.flow.vessel_mask_3d = inside3;
 
     [~, ix_center] = min(abs(params.x_grid));
+    [~, iy_center] = min(abs(params.y_grid));
     gt.flow.radial_profile_z = params.z_grid';
     gt.flow.radial_profile_v = vx_map(:, ix_center);
+    gt.flow.center_y_index = iy_center;
 
     dt_frame = params.n_angles / params.PRF;
     gt.flow.dt_frame = dt_frame;
     gt.flow.dx_map = vx_map * dt_frame;
+    gt.flow.dx_map_3d = vx_map3 * dt_frame;
     gt.flow.dx_max = params.v0 * dt_frame;
 
     gt.grid.x = params.x_grid;
+    gt.grid.y = params.y_grid;
     gt.grid.z = params.z_grid;
     gt.grid.dx = params.dx;
+    gt.grid.dy = params.dy;
     gt.grid.dz = params.dz;
     gt.grid.Nx = params.Nx;
+    gt.grid.Ny = params.Ny;
     gt.grid.Nz = params.Nz;
 
-    fprintf('Ground truth: v0=%.2f m/s, R=%.1f mm, WSR=%.0f 1/s, dx_max=%.3f mm/frame\n', ...
-        params.v0, params.R*1e3, gt.flow.WSR_analytical, gt.flow.dx_max*1e3);
+    fprintf(['Ground truth: v0=%.2f m/s, R=%.1f mm, WSR=%.0f 1/s, ', ...
+        'dx_max=%.3f mm/frame, 3D grid=%dx%dx%d\n'], ...
+        params.v0, params.R*1e3, gt.flow.WSR_analytical, ...
+        gt.flow.dx_max*1e3, params.Nz, params.Nx, params.Ny);
 end
