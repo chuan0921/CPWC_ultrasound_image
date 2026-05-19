@@ -24,15 +24,16 @@ function params = setup_parameters(probe_name)
     %% 流場參數 (Poiseuille steady flow)
     params.phantom_name = 'literature_steady_poiseuille';
     params.v0 = 0.50;                       % 中心線速度 [m/s] (50 cm/s)
-    params.R = 3e-3;                        % 管半徑 [m] (6mm 直徑)
+    params.R = 2.5e-3;                      % 管腔半徑 [m] (5 mm 內徑)
+    params.wall_thickness = 0.2e-3;         % 管壁厚度 [m] (5.4 mm 外徑)
     params.vessel_center_z = 20e-3;         % 管中心深度 [m]
     params.beam_to_flow_angle = pi/2;       % 超音波束與流向夾角 [rad]
 
     %% 影像網格 (窄 FOV，只供 speckle tracking + 看血管壁)
     params.x_min = -5e-3;                   % FOV 寬 10 mm
     params.x_max =  5e-3;
-    params.z_min = 16e-3;                   % 含血管壁 z=17, 23 mm 各留 1 mm margin
-    params.z_max = 24e-3;
+    params.z_min = 16.3e-3;                 % 含外壁 z=17.3, 22.7 mm 各留 1 mm margin
+    params.z_max = 23.7e-3;
     params.dx = params.lambda / 2;          % Lateral 像素間距 [m]
     params.dz = params.lambda / 4;          % Axial 像素間距 [m]
 
@@ -43,13 +44,16 @@ function params = setup_parameters(probe_name)
 
     %% 3D phantom elevation grid
     params.dy = params.lambda / 2;          % Elevation voxel spacing [m]
+    params.elevation_beam_sigma = ...
+        params.lambda * params.elev_focus / params.element_height; % Probe-determined elevation beam sigma [m]
+    params.elevation_extent_half = 5e-3;    % Fixed linear-array 3D simulation support [m]
     if isfield(params.probe, 'element_data')
         y_vertices = params.probe.element_data(:, [3 6 9 12]);
         params.y_min = min(y_vertices(:));
         params.y_max = max(y_vertices(:));
     else
-        params.y_min = -(params.R + params.wall_thickness + 1e-3);
-        params.y_max =  (params.R + params.wall_thickness + 1e-3);
+        params.y_min = -params.elevation_extent_half;
+        params.y_max =  params.elevation_extent_half;
     end
     params.y_grid = params.y_min : params.dy : params.y_max;
     params.Ny = length(params.y_grid);
@@ -58,11 +62,11 @@ function params = setup_parameters(probe_name)
     % 管長度延伸到 FOV 外避免邊界效應
     params.vessel_length = 12e-3;           % 管長 [m] (wrap-around 安全下限: v0*T_total = 5 mm)
     params.scatter_density = 10;            % 每個解析度單元的散射子數
-    params.wall_thickness = 0.2e-3;         % 管壁厚度 [m]
     params.wall_amp_factor = 10;            % 管壁相對振幅倍數
 
     %% 雜訊
     params.SNR_dB = 20;                     % 訊噪比 [dB]
+    params.noise_mode = 'snr';              % 'snr' uses clean image RMS; 'floor' uses image_noise_floor
 
     %% 模擬設定
     params.random_seeds = 1:5;              % 批次產生不同 speckle seed

@@ -143,8 +143,6 @@ function [lri_env_frames, lri_bmode_frames, lri_env_rows, lri_bmode_rows] = ...
             else
                 angle_gain = 1;
             end
-            angle_noise = params.image_noise_floor * complex(randn(size(X)), randn(size(X)));
-
             shadow = 1 - 0.18 * lumen;
             iq_volume = tissue_iq + flow_iq + wall_iq;
 
@@ -157,12 +155,13 @@ function [lri_env_frames, lri_bmode_frames, lri_env_rows, lri_bmode_rows] = ...
                     row_iq = row_gain * angle_gain * row_iq .* sensitivity .* shadow;
                     row_iq_stack(:,:,row) = row_iq;
                 end
-                lri_iq = mean(row_iq_stack, 3) + angle_noise;
+                clean_lri_iq = mean(row_iq_stack, 3);
+                lri_iq = clean_lri_iq + complex_image_noise(size(X), clean_lri_iq, params);
             else
                 aperture_weights = aperture_elevation_weights(params);
-                lri_iq = angle_gain * project_elevation(iq_volume, aperture_weights) ...
+                clean_lri_iq = angle_gain * project_elevation(iq_volume, aperture_weights) ...
                     .* sensitivity .* shadow;
-                lri_iq = lri_iq + angle_noise;
+                lri_iq = clean_lri_iq + complex_image_noise(size(X), clean_lri_iq, params);
             end
 
             lri_env_frames(:,:,angle_idx,frame) = abs(lri_iq);
@@ -170,9 +169,8 @@ function [lri_env_frames, lri_bmode_frames, lri_env_rows, lri_bmode_rows] = ...
                 envelope_to_bmode(lri_env_frames(:,:,angle_idx,frame), params.dynamic_range);
 
             for row = 1:n_rows
-                row_noise = params.image_noise_floor * ...
-                    complex(randn(size(X)), randn(size(X)));
-                row_iq = row_iq_stack(:,:,row) + row_noise;
+                row_iq = row_iq_stack(:,:,row) + ...
+                    complex_image_noise(size(X), row_iq_stack(:,:,row), params);
 
                 lri_env_rows(:,:,row,angle_idx,frame) = abs(row_iq);
                 lri_bmode_rows(:,:,row,angle_idx,frame) = envelope_to_bmode( ...
@@ -224,10 +222,25 @@ function weights = aperture_elevation_weights(params)
         y_max = max(y_vertices(:));
         weights = soft_rect_weights(params.y_grid, y_min, y_max, params.dy);
     else
-        sigma = max(params.R / 2, params.lambda);
+        sigma = max(params.elevation_beam_sigma, params.lambda);
         weights = exp(-0.5 * (params.y_grid / sigma).^2);
     end
     weights = weights / sum(weights);
+end
+
+function noise = complex_image_noise(image_size, clean_iq, params)
+    mode = get_optional_param(params, 'noise_mode', 'floor');
+    switch lower(mode)
+        case 'snr'
+            signal_rms = sqrt(mean(abs(clean_iq(:)).^2));
+            complex_noise_rms = signal_rms / 10^(params.SNR_dB / 20);
+            component_sigma = complex_noise_rms / sqrt(2);
+            noise = component_sigma * complex(randn(image_size), randn(image_size));
+        case 'floor'
+            noise = params.image_noise_floor * complex(randn(image_size), randn(image_size));
+        otherwise
+            error('Unknown noise_mode: %s', mode);
+    end
 end
 
 function weights = row_elevation_weights(params, row)

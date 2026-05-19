@@ -164,12 +164,21 @@ Seeds: 1:5
 Frames per seed: 20
 Velocity profile: steady Poiseuille flow
 Center velocity: 0.50 m/s
-Vessel radius: 3 mm
+Vessel radius: 2.5 mm
+Vessel inner diameter: 5 mm
+Vessel outer diameter: 5.4 mm
 Vessel center depth: 20 mm
 Wall thickness: 0.2 mm
+Elevation support: +/-5 mm for linear-array profiles
+Elevation beam sigma: probe-derived from wavelength, elevation focus, and element height
+Noise mode: SNR-scaled complex image noise
 ```
 
 The vessel radius defines the lumen. The wall is added outside the lumen.
+For linear-array profiles, the elevation simulation support and elevation
+projection weighting are fixed by probe-related settings rather than vessel
+radius, so changing the lumen radius does not also change the elevation beam
+model.
 
 ## Ground Truth
 
@@ -192,8 +201,10 @@ For the default setup:
 
 ```text
 vessel center = 20 mm
-upper lumen boundary = 17 mm
-lower lumen boundary = 23 mm
+upper lumen boundary = 17.5 mm
+lower lumen boundary = 22.5 mm
+upper outer wall boundary = 17.3 mm
+lower outer wall boundary = 22.7 mm
 maximum frame displacement = 0.25 mm/frame
 ```
 
