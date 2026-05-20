@@ -165,18 +165,22 @@ function [lri_env_frames, lri_bmode_frames, lri_env_rows, lri_bmode_rows] = ...
             end
 
             lri_env_frames(:,:,angle_idx,frame) = abs(lri_iq);
-            lri_bmode_frames(:,:,angle_idx,frame) = ...
-                envelope_to_bmode(lri_env_frames(:,:,angle_idx,frame), params.dynamic_range);
 
             for row = 1:n_rows
                 row_iq = row_iq_stack(:,:,row) + ...
                     complex_image_noise(size(X), row_iq_stack(:,:,row), params);
 
                 lri_env_rows(:,:,row,angle_idx,frame) = abs(row_iq);
-                lri_bmode_rows(:,:,row,angle_idx,frame) = envelope_to_bmode( ...
-                    lri_env_rows(:,:,row,angle_idx,frame), params.dynamic_range);
             end
         end
+    end
+
+    bmode_reference = bmode_reference_value(lri_env_frames, lri_env_rows, params);
+    lri_bmode_frames = envelope_to_bmode(lri_env_frames, ...
+        params.dynamic_range, bmode_reference);
+    if has_rows
+        lri_bmode_rows = envelope_to_bmode(lri_env_rows, ...
+            params.dynamic_range, bmode_reference);
     end
 
     expected_size = [params.Nz, params.Nx, params.n_angles, params.n_frames];
@@ -268,9 +272,22 @@ function kernel = gaussian_kernel(sigma_m, spacing_m)
     kernel = kernel / sum(kernel);
 end
 
-function bmode = envelope_to_bmode(envelope, dynamic_range)
-    env_max = max(envelope(:));
-    bmode = 20 * log10(max(envelope, eps) / max(env_max, eps));
+function reference = bmode_reference_value(lri_env_frames, lri_env_rows, params)
+    mode = get_optional_param(params, 'bmode_reference_mode', 'seed_max');
+    switch lower(mode)
+        case 'seed_max'
+            if isempty(lri_env_rows)
+                reference = max(lri_env_frames(:));
+            else
+                reference = max([lri_env_frames(:); lri_env_rows(:)]);
+            end
+        otherwise
+            error('Unknown bmode_reference_mode: %s', mode);
+    end
+end
+
+function bmode = envelope_to_bmode(envelope, dynamic_range, reference)
+    bmode = 20 * log10(max(envelope, eps) / max(reference, eps));
     bmode = max(bmode, -dynamic_range);
 end
 

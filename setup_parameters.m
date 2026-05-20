@@ -67,6 +67,7 @@ function params = setup_parameters(probe_name)
     %% 雜訊
     params.SNR_dB = 20;                     % 訊噪比 [dB]
     params.noise_mode = 'snr';              % 'snr' uses clean image RMS; 'floor' uses image_noise_floor
+    params.bmode_reference_mode = 'seed_max'; % Fixed dB reference per seed for temporal consistency
 
     %% 模擬設定
     params.random_seeds = 1:5;              % 批次產生不同 speckle seed

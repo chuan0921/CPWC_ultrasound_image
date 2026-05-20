@@ -172,6 +172,7 @@ Wall thickness: 0.2 mm
 Elevation support: +/-5 mm for linear-array profiles
 Elevation beam sigma: probe-derived from wavelength, elevation focus, and element height
 Noise mode: SNR-scaled complex image noise
+B-mode reference: fixed seed maximum
 ```
 
 The vessel radius defines the lumen. The wall is added outside the lumen.
@@ -179,6 +180,9 @@ For linear-array profiles, the elevation simulation support and elevation
 projection weighting are fixed by probe-related settings rather than vessel
 radius, so changing the lumen radius does not also change the elevation beam
 model.
+Saved B-mode images and PNG previews use one fixed dB reference per seed, not a
+separate maximum per frame, so preview brightness is temporally comparable
+across frame and angle images from the same seed.
 
 ## Ground Truth
 
