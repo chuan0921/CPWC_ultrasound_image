@@ -1,5 +1,6 @@
 output/
 output_fieldii_parallel/
+data/
 ref/
 
 *.asv
@@ -9,4 +10,3 @@ ref/
 
 .DS_Store
 .vscode/
-

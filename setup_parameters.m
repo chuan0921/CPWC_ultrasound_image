@@ -76,6 +76,27 @@ function params = setup_parameters(probe_name)
     params.n_frames = 20;                   % 每個 seed 的模擬幀數
     params.video_fps = 20;                  % 輸出影片幀率 [frames/s]
     params.dynamic_range = 50;              % B-mode 動態範圍 [dB]
+    params.flow_domain_mode = 'extended_crop'; % Generate upstream flow texture outside FOV, then crop
+    params.flow_extension_margin = max(1e-3, 4 * params.lambda * 0.85);
+    params.flow_max_displacement = ...
+        abs(params.v0) * ((params.n_frames - 1) * params.n_angles + ...
+        (params.n_angles - 1)) / params.PRF;
+    params.flow_x_min = params.x_min - params.flow_max_displacement - ...
+        params.flow_extension_margin;
+    params.flow_x_max = params.x_max + params.flow_max_displacement + ...
+        params.flow_extension_margin;
+    params.flow_x_grid = params.flow_x_min : params.dx : params.flow_x_max;
+    params.Nx_flow = length(params.flow_x_grid);
+
+    %% Y-scan dataset settings
+    params.yscan.enabled = false;
+    params.yscan.dataset_name = '500_025m_cpwc_yscan_5mhz';
+    params.yscan.y_positions_mm = -3.0:0.25:3.0;
+    params.yscan.scan_spacing_mm = 0.25;
+    params.yscan.z0_mm = params.vessel_center_z * 1e3;
+    params.yscan.slope_mm_per_mm = 0.2;
+    params.yscan.slice_sigma = max(params.dy, 0.25e-3);
+    params.yscan.output_root_name = 'data';
 
 end
 
@@ -153,6 +174,10 @@ function probe = probe_profile(name)
             probe.n_sub_x = 1;
             probe.n_sub_y = 1;
             probe.fs = 100e6;
+            probe.lr_geometry = true;
+            probe.lr_depth_mm = [10 20 25 30 35 40 45 50 55 60];
+            probe.lr_distance_mm = [3.07 1.51 1.25 0.99 0.43 0.26 0.09 -0.13 -0.43 -0.69];
+            probe.lr_sigma = 1.2e-3;
 
             probe.element_data = zipper_element_data(probe);
             probe.element_centers = element_centers_from_data(probe.element_data);

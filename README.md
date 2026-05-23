@@ -15,6 +15,42 @@ Run the fast simulator from MATLAB:
 main_flow_simulation
 ```
 
+Run the y-scan dataset generator from MATLAB:
+
+```matlab
+main_yscan_simulation
+```
+
+The y-scan generator writes:
+
+```text
+data/500_025m_cpwc_yscan_5mhz_zipper_row/
+  seed_0001/
+    yscan_metadata.json
+    row1/
+      template_dictionary/
+        y_-3.00mm_avg.mat
+        ...
+      y_-3.00mm/
+        image_data.mat
+        ground_truth.mat
+        tracking_metadata.mat
+        avg_image.mat
+        lri_frames/
+      ...
+    row2/
+      template_dictionary/
+      y_-3.00mm/
+      ...
+```
+
+Each y folder contains ordinary x-z CPWC LRI data in
+`lri_env_frames(:,:,angle_idx,frame_idx)` for 2-D Vx estimation. The
+row-specific `template_dictionary` contains `env_avg`, `bmode_avg`, and
+metadata with `true_y_mm`, wall depths, vessel center depth, and radius for
+y-localization. For zipper y-scans, the official layout is row-first:
+`seed_XXXX/row1/y_*.mm/` and `seed_XXXX/row2/y_*.mm/`.
+
 The default probe profile is `literature_l12_3v`. To run another probe profile,
 set `probe_name` before calling the simulator:
 
@@ -137,6 +173,12 @@ lri_env_rows
 lri_bmode_rows
 ```
 
+For the zipper-array profile, row-specific LRI projection uses the calibrated
+depth-dependent LR distance table in `params.probe.lr_depth_mm` and
+`params.probe.lr_distance_mm`. Row 1 and row 2 are modeled as left/right
+elevation sensitivities centered at `-LR(z)/2` and `+LR(z)/2`, respectively,
+with effective width `params.probe.lr_sigma`.
+
 `lri_frames/` contains per-frame/per-angle `.mat` and `.png` files. The `.mat`
 files store one LRI envelope image and its B-mode visualization:
 
@@ -173,6 +215,7 @@ Elevation support: +/-5 mm for linear-array profiles
 Elevation beam sigma: probe-derived from wavelength, elevation focus, and element height
 Noise mode: SNR-scaled complex image noise
 B-mode reference: fixed seed maximum
+Flow domain: extended x-domain generation, cropped to FOV after displacement
 ```
 
 The vessel radius defines the lumen. The wall is added outside the lumen.
@@ -183,6 +226,10 @@ model.
 Saved B-mode images and PNG previews use one fixed dB reference per seed, not a
 separate maximum per frame, so preview brightness is temporally comparable
 across frame and angle images from the same seed.
+Flow speckle is generated on an extended x-domain large enough to cover the
+maximum displacement over the sequence, then sampled back onto the imaging FOV
+after motion. This prevents flow texture from leaving the FOV and being replaced
+by zeros during steady-flow sequences.
 
 ## Ground Truth
 
